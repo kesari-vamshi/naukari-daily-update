@@ -20,9 +20,8 @@ function readState() {
   } catch (error) {
     logger.error(`Error reading state file: ${error.message}`);
   }
-  
-  // Default state if file doesn't exist or can't be read
-  return { lastUpdate: null, spacesAdded: false };
+
+  return { lastUpdate: null, spaceAtEnd: false };
 }
 
 /**
@@ -38,18 +37,16 @@ function writeState(state) {
 }
 
 /**
- * Updates the bio by adding or removing spaces
+ * Updates the bio by adding or removing a space at the end
  * @param {string} currentBio The current bio text
- * @param {boolean} addSpaces Whether to add spaces or remove them
+ * @param {boolean} addSpace Whether to add a space at the end or remove it
  * @returns {string} The updated bio text
  */
-function modifyBio(currentBio, addSpaces) {
-  if (addSpaces) {
-    // Add a space between each character
-    return currentBio.split('').join(' ');
+function modifyBio(currentBio, addSpace) {
+  if (addSpace) {
+    return currentBio.endsWith(' ') ? currentBio : currentBio + ' ';
   } else {
-    // Remove all spaces
-    return currentBio.replace(/\s+/g, '');
+    return currentBio.endsWith(' ') ? currentBio.slice(0, -1) : currentBio;
   }
 }
 
@@ -57,6 +54,10 @@ function modifyBio(currentBio, addSpaces) {
  * Main function to update the Naukri bio
  */
 async function updateNaukriBio() {
+  if (!process.env.NAUKRI_EMAIL || !process.env.NAUKRI_PASSWORD) {
+    throw new Error('Missing NAUKRI_EMAIL or NAUKRI_PASSWORD in environment variables.');
+  }
+
   const browser = await puppeteer.launch({
     headless: 'new',
     args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -64,54 +65,50 @@ async function updateNaukriBio() {
 
   try {
     const page = await browser.newPage();
-    
-    // Set a reasonable viewport
     await page.setViewport({ width: 1280, height: 800 });
-    
-    // Login to Naukri
+
+    // Login
     await login(page, process.env.NAUKRI_EMAIL, process.env.NAUKRI_PASSWORD);
-    
-    // Navigate to profile page
+
     logger.info('Navigating to profile page');
     await page.goto('https://www.naukri.com/mnjuser/profile', { waitUntil: 'networkidle2' });
-    
-    // Click on the "Edit Profile Summary" button
+
     logger.info('Opening profile summary editor');
     await page.waitForSelector('a[href="#profileSummary"]');
     await page.click('a[href="#profileSummary"]');
-    
-    // Wait for the editor to appear
+
     await page.waitForSelector('.summaryEditor');
-    
+
     // Get the current bio text
-    const currentBio = await page.$eval('.summaryEditor', el => el.textContent);
-    
-    // Read the current state
+    const currentBio = await page.$eval('.summaryEditor', el => el.innerText.trim());
+
     const state = readState();
-    
-    // Determine whether to add or remove spaces
-    const addSpaces = !state.spacesAdded;
-    
-    // Update the bio
-    const newBio = modifyBio(currentBio, addSpaces);
-    
-    // Clear the current bio and type the new one
-    logger.info(`Updating bio - ${addSpaces ? 'adding' : 'removing'} spaces`);
-    await page.$eval('.summaryEditor', el => el.textContent = '');
-    await page.type('.summaryEditor', newBio);
-    
-    // Click the Save button
+    const addSpace = !state.spaceAtEnd;
+    const newBio = modifyBio(currentBio, addSpace);
+
+    // Replace the bio using contenteditable-safe methods
+    logger.info(`Updating bio - ${addSpace ? 'adding' : 'removing'} space at the end`);
+    await page.evaluate((bio) => {
+      const editor = document.querySelector('.summaryEditor');
+      if (editor) {
+        editor.innerText = '';
+        editor.focus();
+        document.execCommand('insertText', false, bio);
+      }
+    }, newBio);
+
+    // Click Save button
     await page.click('button.saveBtn');
-    
-    // Wait for save confirmation
+
+    // Wait for confirmation
     await page.waitForSelector('.toast-message', { timeout: 10000 });
-    
-    // Update the state
+
+    // Update state
     state.lastUpdate = new Date().toISOString();
-    state.spacesAdded = addSpaces;
+    state.spaceAtEnd = addSpace;
     writeState(state);
-    
-    logger.info(`Bio updated successfully. Spaces ${addSpaces ? 'added' : 'removed'}.`);
+
+    logger.info(`Bio updated successfully. Space ${addSpace ? 'added' : 'removed'} at the end.`);
   } catch (error) {
     logger.error(`Error in updateNaukriBio: ${error.message}`);
     throw error;
