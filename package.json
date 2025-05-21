@@ -1,0 +1,19 @@
+{
+  "name": "naukri-profile-updater",
+  "version": "1.0.0",
+  "description": "Automatically update Naukri profile bio daily",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "zip -r function.zip . -x '*.git*'"
+  },
+  "dependencies": {
+    "puppeteer": "^21.3.8",
+    "dotenv": "^16.3.1",
+    "node-cron": "^3.0.2",
+    "winston": "^3.10.0",
+    "@aws-sdk/client-ssm": "^3.370.0"
+  },
+  "private": true
+}
