@@ -7,39 +7,46 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from dotenv import load_dotenv
-import openai
+import google.generativeai as genai
 
-# Load env variables
+# Load environment variables
 load_dotenv()
 NAUKRI_EMAIL = os.getenv("NAUKRI_EMAIL")
 NAUKRI_PASSWORD = os.getenv("NAUKRI_PASSWORD")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-openai.api_key = OPENAI_API_KEY
+# Configure Gemini
+genai.configure(api_key=GEMINI_API_KEY)
 
 def generate_headline(role, years_exp):
-    return f"DevOps Engineer with {years_exp} years of experience specializing in cloud infrastructure, automation, and CI/CD pipelines."
+    return f"{role} with {years_exp} years of experience specializing in cloud infrastructure, automation, and CI/CD pipelines."
 
 def enhance_headline(old_headline):
     try:
-        print("Enhancing headline with GPT and DevOps keywords...")
-        client = openai.OpenAI()  # Use OpenAI client properly
+        print("Enhancing headline with Gemini and DevOps keywords...")
 
-        response = client.chat.completions.create(
-            model="gpt-4o",  # or "gpt-3.5-turbo" if you don't have GPT-4 access
-            messages=[
-                {"role": "system", "content": "You are a resume optimization expert."},
-                {"role": "user", "content": (
-                    f"Take this resume headline: '{old_headline}'. "
-                    "Slightly improve the language, and include 2-3 trending keywords relevant to a DevOps Engineer, "
-                    "such as Docker, Kubernetes, CI/CD, Terraform, AWS, Jenkins, etc. "
-                    "Keep the headline natural, concise, and under 200 characters."
-                )}
-            ]
+        model = genai.GenerativeModel("gemini-1.5-flash")  # use supported model
+        prompt = (
+            f"Take this resume headline: '{old_headline}'. "
+            "Give me 3 enhanced versions using trending DevOps keywords like Docker, Kubernetes, CI/CD, Terraform, AWS, Jenkins, etc. "
+            "Return each as a separate bullet point, no commentary."
         )
-        return response.choices[0].message.content.strip()
+
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+
+        # Extract bullet points
+        options = [line.lstrip("*-• ").strip() for line in text.split("\n") if line.strip().startswith(("*", "-", "•"))]
+
+        if options:
+            print("\nAuto-selected enhanced headline (option 1):", options[0])
+            return options[0]
+        else:
+            print("❌ No bullet points found in response. Using original headline.")
+            return old_headline
+
     except Exception as e:
-        print(f"GPT Error: {e}")
+        print(f"Gemini Error: {e}")
         return old_headline
 
 def main():
@@ -54,74 +61,68 @@ def main():
         print("Login page opened")
         time.sleep(10)
 
-        # Enter email
+        # Enter credentials
         wait.until(EC.visibility_of_element_located((By.ID, "usernameField"))).send_keys(NAUKRI_EMAIL)
-        time.sleep(10)
-
-        # Enter password
+        time.sleep(5)
         wait.until(EC.visibility_of_element_located((By.ID, "passwordField"))).send_keys(NAUKRI_PASSWORD)
-        time.sleep(10)
+        time.sleep(5)
 
-        # Click login button
+        # Login
         wait.until(EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='Login']"))).click()
         print("Login submitted")
         time.sleep(10)
 
-        # Handle potential "password compromised" popup
+        # Handle optional popup
         try:
             alert_ok = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'OK')]")))
             alert_ok.click()
-            print("Clicked 'OK' on password compromised popup")
-            time.sleep(10)
+            print("Clicked 'OK' on alert")
+            time.sleep(5)
         except Exception:
-            # No popup, continue
             pass
 
-        # Navigate to profile page directly
+        # Navigate to profile page
         driver.get("https://www.naukri.com/mnjuser/profile")
         print("Navigated to profile page")
         time.sleep(10)
 
-        # Click on first required element
+        # Click to edit resume headline
         xpath_1 = '/html/body/div[3]/div/div/span/div/div/div/div/div/div[2]/div[1]/div/div/ul/li[3]/span'
         wait.until(EC.element_to_be_clickable((By.XPATH, xpath_1))).click()
-        print("Clicked first element")
-        time.sleep(10)
+        print("Clicked edit section")
+        time.sleep(5)
 
-        # Click on second element
         xpath_2 = '/html/body/div[3]/div/div/span/div/div/div/div/div/div[2]/div[2]/div[5]/div/div/div[1]/span[2]'
         wait.until(EC.element_to_be_clickable((By.XPATH, xpath_2))).click()
-        print("Clicked second element")
-        time.sleep(10)
+        print("Clicked pencil icon")
+        time.sleep(5)
 
-        # Wait for textarea to appear and update resume headline
+        # Update resume headline
         textarea_xpath = '//*[@id="resumeHeadlineTxt"]'
         textarea = wait.until(EC.visibility_of_element_located((By.XPATH, textarea_xpath)))
 
-        # Generate and enhance headline using GPT
         base_headline = generate_headline("DevOps Engineer", 2.8)
         print("Generated base headline:", base_headline)
-        time.sleep(10)
+        time.sleep(5)
 
         enhanced_headline = enhance_headline(base_headline)
-        print("Enhanced headline:", enhanced_headline)
-        time.sleep(10)
+        time.sleep(5)
 
         textarea.clear()
         textarea.send_keys(enhanced_headline)
         print("Updated headline in textarea")
-        time.sleep(10)
+        time.sleep(5)
 
-        # Click save button
+        # Save headline
         save_button_xpath = '/html/body/div[6]/div[8]/div[2]/form/div[3]/div/button'
         wait.until(EC.element_to_be_clickable((By.XPATH, save_button_xpath))).click()
-        print("Clicked save button")
-        time.sleep(10)
+        print("Saved updated headline")
+        time.sleep(5)
 
-        print("Resume headline updated successfully!")
+        print("✅ Resume headline updated successfully!")
 
     except Exception as e:
-        print("Error occurred:", e)
+        print("❌ Error occurred:", e)
     finally:
         print("Closing browser in 5 seconds...")
         time.sleep(5)
